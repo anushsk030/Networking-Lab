@@ -2,24 +2,23 @@
 #include <stdlib.h>
 
 struct Frame {
-    int info;
-    int seq;
+    int seq;  // Sequence number of the packet
 };
 
 struct Frame packet;
 int ack, max_packets = 5;
-char turn = 's';  // 's' -> Sender's turn, 'r' -> Receiver's turn
-int frame_error = 0, ack_error = 0;
-int disconnect = 0;
+char turn = 's';      // 's' -> Sender's turn, 'r' -> Receiver's turn
+int frame_error = 0;  // Simulate packet loss
+int ack_error = 0;    // Simulate ACK loss
+int disconnect = 0;   // Stop condition
 
 void sender();
 void receiver();
 
 int main() {
-    packet.info = 0;
-    packet.seq = 0;
+    packet.seq = 0; // Initialize sequence number
     
-    while (!disconnect) {
+    while (disconnect == 0) {
         sender();
         receiver();
     }
@@ -28,74 +27,60 @@ int main() {
 }
 
 void sender() {
-    static int first_packet = 1;
-    static int retransmit = 0; // Flag to check if we need to resend the same packet
+    static int retransmit = 0; // Flag for retransmission
 
-    if (turn == 's') {
-        if (!ack_error) {
-            if (!first_packet && !retransmit) {
-                printf("SENDER: Received ACK for packet %d\n", ack);
-            }
+    if (turn == 's') {  
+        if (packet.seq == max_packets) { // If all packets are sent, terminate
+            printf("SENDER: All packets sent successfully. Terminating...\n");
+            disconnect = 1;
+            return;
+        }
 
-            if (!retransmit) { // Move to the next packet only if no retransmission is needed
-                if (packet.seq == max_packets) {
-                    printf("SENDER: All packets sent successfully. Terminating...\n");
-                    disconnect = 1;
-                    return;
-                }
-                packet.info++;
-                packet.seq++;
-            }
+        if (retransmit == 0) { // Normal packet sending
+            printf("SENDER: Sending packet %d\n", packet.seq);
+        } else { // Retransmitting last packet due to ACK loss
+            printf("SENDER: Retransmitting packet %d (ACK was lost)\n", packet.seq);
+        }
 
-            printf("SENDER: Sent packet with seq NO: %d\n", packet.seq);
-            frame_error = rand() % 4; // 1 in 4 chance of frame error
+        frame_error = rand() % 4; // 1 in 4 chance of packet loss
 
-            if (frame_error == 0) {
-                printf("SENDER: Error while sending Packet!\n");
-                retransmit = 1; // Mark for retransmission
-            } else {
-                retransmit = 0; // Reset retransmission flag
-            }
-
-            turn = 'r';
-            first_packet = 0;
-        } else {
-            printf("SENDER: Retransmitting packet %d (Previous ACK was lost)\n", packet.seq);
-            frame_error = rand() % 4;
-            if (frame_error == 0) {
-                printf("SENDER: Error while resending Packet!\n");
-            }
-            turn = 'r';
+        if (frame_error == 0) {  
+            printf("SENDER: Packet %d lost. Retransmitting...\n", packet.seq);
+            retransmit = 1; // Set retransmit flag
+        } else { 
+            turn = 'r'; // Hand over control to receiver
         }
     }
 }
 
 void receiver() {
-    static int expected_seq = 1;
+    static int expected_seq = 0;
 
     if (turn == 'r') {
-        if (frame_error == 0) {
-            printf("RECEIVER: Packet %d lost. Requesting retransmission...\n", expected_seq);
-            turn = 's'; // Allow sender to retransmit
+        if (frame_error == 0) { // If packet was lost
+            turn = 's'; // Ask sender to retransmit
             return;
         }
 
-        if (packet.seq == expected_seq) {
-            printf("RECEIVER: Received packet with seq NO: %d\n", packet.seq);
+        if (packet.seq == expected_seq) { // If expected packet received
+            printf("RECEIVER: Received packet %d\n", packet.seq);
             ack = packet.seq;
-            expected_seq++;
-        } else {
-            printf("RECEIVER: Duplicate packet received! Resending ACK for seq NO: %d\n", expected_seq - 1);
+            expected_seq++; // Move to next expected packet
+        } else { // If duplicate packet received
+            printf("RECEIVER: Duplicate packet! Resending ACK for %d\n", expected_seq - 1);
             ack = expected_seq - 1;
         }
 
-        ack_error = rand() % 4; // 1 in 4 chance of ACK error
+        ack_error = rand() % 4; // Simulate ACK loss
         if (ack_error == 0) {
-            printf("RECEIVER: Error while sending ACK!\n");
+            printf("RECEIVER: ACK lost for packet %d\n", ack);
+            turn = 's'; // Sender should retransmit the last packet
         } else {
-            printf("RECEIVER: ACK sent for seq NO: %d\n", ack);
+            printf("RECEIVER: ACK sent for packet %d\n", ack);
+            packet.seq++;   // Move to the next packet only if ACK was received
+            turn = 's'; // Switch turn back to sender
         }
-        turn = 's';
     }
 }
+
 
